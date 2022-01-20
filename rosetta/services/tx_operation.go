@@ -283,7 +283,7 @@ func GetSideEffectOperationsFromGenesisSpec(
 func GetTransactionStatus(tx hmytypes.PoolTransaction, receipt *hmytypes.Receipt) *string {
 	if _, ok := tx.(*hmytypes.Transaction); ok {
 		status := common.SuccessOperationStatus.Status
-		if tx.Hash().String() == "0x4284203829c52f5b6ccbe3e66d42bea7ed8a5abef370047ca1b180aeebe9332c" {
+		if common.GetDefaultFix().IsForceTxSuccess(tx.Hash().Hex()) {
 			return &status
 		}
 
