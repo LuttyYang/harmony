@@ -90,7 +90,7 @@ func GetNativeOperationsFromStakingTransaction(
 	if signed {
 		// All operations excepts for cross-shard tx payout expend gas
 		gasExpended := new(big.Int).Mul(new(big.Int).SetUint64(receipt.GasUsed), tx.GasPrice())
-		operations = newNativeOperationsWithGas(gasExpended, accountID)
+		operations = newNativeOperationsWithGasNoSubAccount(gasExpended, accountID)
 	}
 
 	// Format staking message for metadata using decimal numbers (hence usage of rpcV2)
@@ -187,6 +187,12 @@ func getUndelegateOperationForSubAccount(
 		},
 	}
 
+	amount := &types.Amount{
+		Value:    positiveStringValue(delegateOperation.Amount.Value),
+		Currency: delegateOperation.Amount.Currency,
+		Metadata: delegateOperation.Amount.Metadata,
+	}
+
 	undelegateion := &types.Operation{
 		OperationIdentifier: &types.OperationIdentifier{
 			Index: delegateOperation.OperationIdentifier.Index + 1,
@@ -203,7 +209,7 @@ func getUndelegateOperationForSubAccount(
 			},
 			Metadata: delegateOperation.Account.Metadata,
 		},
-		Amount:   delegateOperation.Amount,
+		Amount:   amount,
 		Metadata: delegateOperation.Metadata,
 	}
 
@@ -755,9 +761,36 @@ func newNativeOperationsWithGas(
 			OperationIdentifier: &types.OperationIdentifier{
 				Index: 0, // gas operation is always first
 			},
-			Type:    common.ExpendGasOperation,
-			Status:  &common.SuccessOperationStatus.Status,
-			Account: accountID,
+			Type:   common.ExpendGasOperation,
+			Status: &common.SuccessOperationStatus.Status,
+			Account: &types.AccountIdentifier{
+				Address:  accountID.Address,
+				Metadata: accountID.Metadata,
+			},
+			Amount: &types.Amount{
+				Value:    negativeBigValue(gasFeeInATTO),
+				Currency: &common.NativeCurrency,
+			},
+		},
+	}
+}
+
+// newNativeOperationsWithGasNoSubAccount creates a new operation with the gas fee as the first operation.
+// Note: the gas fee is gasPrice * gasUsed.
+func newNativeOperationsWithGasNoSubAccount(
+	gasFeeInATTO *big.Int, accountID *types.AccountIdentifier,
+) []*types.Operation {
+	return []*types.Operation{
+		{
+			OperationIdentifier: &types.OperationIdentifier{
+				Index: 0, // gas operation is always first
+			},
+			Type:   common.ExpendGasOperation,
+			Status: &common.SuccessOperationStatus.Status,
+			Account: &types.AccountIdentifier{
+				Address:  accountID.Address,
+				Metadata: accountID.Metadata,
+			},
 			Amount: &types.Amount{
 				Value:    negativeBigValue(gasFeeInATTO),
 				Currency: &common.NativeCurrency,
