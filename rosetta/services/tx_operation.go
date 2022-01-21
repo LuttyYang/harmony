@@ -118,6 +118,10 @@ func GetNativeOperationsFromStakingTransaction(
 		if amount, rosettaError = getAmountFromDelegateMessage(receipt, tx.Data()); rosettaError != nil {
 			return nil, rosettaError
 		}
+	case stakingTypes.DirectiveUndelegate:
+		if amount, rosettaError = getAmountFromUnDelegateMessage(receipt, tx.Data()); rosettaError != nil {
+			return nil, rosettaError
+		}
 	case stakingTypes.DirectiveCollectRewards:
 		if amount, rosettaError = getAmountFromCollectRewards(receipt, senderAddress); rosettaError != nil {
 			return nil, rosettaError
@@ -633,6 +637,34 @@ func getAmountFromDelegateMessage(receipt *hmytypes.Receipt, data []byte) (*type
 
 	deductedAmt := stkMsg.Amount
 	logs := hmytypes.FindLogsWithTopic(receipt, staking.DelegateTopic)
+	for _, log := range logs {
+		if len(log.Data) > ethcommon.AddressLength && log.Address == stkMsg.DelegatorAddress {
+			// Remove re-delegation amount as funds were never credited to account's balance.
+			deductedAmt = new(big.Int).Sub(deductedAmt, new(big.Int).SetBytes(log.Data[ethcommon.AddressLength:]))
+		}
+	}
+	return &types.Amount{
+		Value:    negativeBigValue(deductedAmt),
+		Currency: &common.NativeCurrency,
+	}, nil
+}
+
+func getAmountFromUnDelegateMessage(receipt *hmytypes.Receipt, data []byte) (*types.Amount, *types.Error) {
+	msg, err := stakingTypes.RLPDecodeStakeMsg(data, stakingTypes.DirectiveUndelegate)
+	if err != nil {
+		return nil, common.NewError(common.CatchAllError, map[string]interface{}{
+			"message": err.Error(),
+		})
+	}
+	stkMsg, ok := msg.(*stakingTypes.Undelegate)
+	if !ok {
+		return nil, common.NewError(common.CatchAllError, map[string]interface{}{
+			"message": "unable to parse staking message for unDelegate tx",
+		})
+	}
+
+	deductedAmt := stkMsg.Amount
+	logs := hmytypes.FindLogsWithTopic(receipt, staking.UnDelegateTopic)
 	for _, log := range logs {
 		if len(log.Data) > ethcommon.AddressLength && log.Address == stkMsg.DelegatorAddress {
 			// Remove re-delegation amount as funds were never credited to account's balance.

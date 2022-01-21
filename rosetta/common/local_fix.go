@@ -57,6 +57,5 @@ func (f *LocalFix) init() {
 }
 
 func (f *LocalFix) IsForceTxSuccess(txHash string) bool {
-	log.Printf("tx hash %s", txHash)
 	return f.txForceSuccess[strings.ToLower(txHash)]
 }
