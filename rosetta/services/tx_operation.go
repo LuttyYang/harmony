@@ -233,7 +233,6 @@ func getDelegateOperationForSubAccount(tx *stakingTypes.StakingTransaction, rece
 	validatorAddress := delegateOperation.Metadata["validatorAddress"]
 	idx := int64(0)
 
-	deductedAmt := stkMsg.Amount
 	logs := hmytypes.FindLogsWithTopic(receipt, staking.DelegateTopic)
 	for _, log := range logs {
 		if len(log.Data) > ethcommon.AddressLength && log.Address == stkMsg.DelegatorAddress {
@@ -245,7 +244,7 @@ func getDelegateOperationForSubAccount(tx *stakingTypes.StakingTransaction, rece
 				return nil
 			}
 
-			deductedAmt = new(big.Int).Sub(deductedAmt, new(big.Int).SetBytes(log.Data[ethcommon.AddressLength:]))
+			deductedAmt := new(big.Int).SetBytes(log.Data[ethcommon.AddressLength:])
 			delegateAmt = stkMsg.Amount
 			idx++
 			ops = append(ops, &types.Operation{
@@ -270,7 +269,7 @@ func getDelegateOperationForSubAccount(tx *stakingTypes.StakingTransaction, rece
 					Metadata: delegateOperation.Account.Metadata,
 				},
 				Amount: &types.Amount{
-					Value:    negativeBigValue(new(big.Int).Sub(delegateAmt, deductedAmt)),
+					Value:    negativeBigValue(deductedAmt),
 					Currency: delegateOperation.Amount.Currency,
 					Metadata: delegateOperation.Amount.Metadata,
 				},
@@ -557,7 +556,29 @@ func getSideEffectOperationsFromUndelegationPayoutsMap(
 		opIndex = *startingOperationIndex
 	}
 
-	for delegator, undelegationMap := range undelegationPayouts.Data {
+	for validator, undelegationMap := range undelegationPayouts.Data {
+		ops, err := getOperationAndTotalAmountFromUndelegationMap(validator, &opIndex, opType, undelegationMap)
+		if err != nil {
+			return nil, err
+		}
+		operations = append(operations, ops...)
+	}
+
+	return operations, nil
+}
+
+// getOperationAndTotalAmountFromUndelegationMap is a helper for getSideEffectOperationsFromUndelegationPayoutsMap which actually
+// has some side effect(opIndex will be increased by this function) so be careful while using for other purpose
+func getOperationAndTotalAmountFromUndelegationMap(validator ethcommon.Address, opIndex *int64,
+	opType string, undelegationMap map[ethcommon.Address]*big.Int) ([]*types.Operation, *types.Error) {
+	var operations []*types.Operation
+	for delegator, amount := range undelegationMap {
+		subAccId, rosettaError := newAccountIdentifierWithSubAccount(delegator, validator, map[string]interface{}{
+			SubAccountMetadataKey: UnDelegation,
+		})
+		if rosettaError != nil {
+			return nil, rosettaError
+		}
 
 		accID, rosettaError := newAccountIdentifier(delegator)
 		if rosettaError != nil {
@@ -566,55 +587,24 @@ func getSideEffectOperationsFromUndelegationPayoutsMap(
 
 		receiverOp := &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
-				Index: opIndex,
+				Index: *opIndex,
 			},
 			Type:    opType,
 			Status:  &common.SuccessOperationStatus.Status,
 			Account: accID,
+			Amount: &types.Amount{
+				Value:    amount.String(),
+				Currency: &common.NativeCurrency,
+			},
 		}
+		*opIndex++
 
-		opIndex++
-		operations = append(operations, receiverOp)
-		receiverIndex := len(operations) - 1
-
-		totalAmount, ops, err := getOperationAndTotalAmountFromUndelegationMap(delegator, &opIndex,
-			receiverOp.OperationIdentifier, opType, undelegationMap)
-		if err != nil {
-			return nil, err
-		}
-		operations = append(operations, ops...)
-
-		operations[receiverIndex].Amount = &types.Amount{
-			Value:    totalAmount.String(),
-			Currency: &common.NativeCurrency,
-		}
-	}
-
-	return operations, nil
-}
-
-// getOperationAndTotalAmountFromUndelegationMap is a helper for getSideEffectOperationsFromUndelegationPayoutsMap which actually
-// has some side effect(opIndex will be increased by this function) so be careful while using for other purpose
-func getOperationAndTotalAmountFromUndelegationMap(
-	delegator ethcommon.Address, opIndex *int64, relatedOpIdentifier *types.OperationIdentifier, opType string,
-	undelegationMap map[ethcommon.Address]*big.Int,
-) (*big.Int, []*types.Operation, *types.Error) {
-	totalAmount := new(big.Int).SetUint64(0)
-	var operations []*types.Operation
-	for validator, amount := range undelegationMap {
-		totalAmount = new(big.Int).Add(totalAmount, amount)
-		subAccId, rosettaError := newAccountIdentifierWithSubAccount(delegator, validator, map[string]interface{}{
-			SubAccountMetadataKey: UnDelegation,
-		})
-		if rosettaError != nil {
-			return nil, nil, rosettaError
-		}
 		payoutOp := &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
 				Index: *opIndex,
 			},
 			RelatedOperations: []*types.OperationIdentifier{
-				relatedOpIdentifier,
+				receiverOp.OperationIdentifier,
 			},
 			Type:    opType,
 			Status:  &common.SuccessOperationStatus.Status,
@@ -624,10 +614,10 @@ func getOperationAndTotalAmountFromUndelegationMap(
 				Currency: &common.NativeCurrency,
 			},
 		}
-		operations = append(operations, payoutOp)
+		operations = append(operations, receiverOp, payoutOp)
 		*opIndex++
 	}
-	return totalAmount, operations, nil
+	return operations, nil
 
 }
 
