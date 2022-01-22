@@ -2,6 +2,8 @@ package services
 
 import (
 	"fmt"
+	"github.com/harmony-one/harmony/internal/bech32"
+	internalCommon "github.com/harmony-one/harmony/internal/common"
 	"math/big"
 
 	"github.com/coinbase/rosetta-sdk-go/types"
@@ -161,8 +163,8 @@ func GetNativeOperationsFromStakingTransaction(
 
 		// expose delegated balance
 		if tx.StakingType() == stakingTypes.DirectiveDelegate {
-			op2 := getDelegateOperationForSubAccount(tx, operations[1])
-			return append(operations, op2), nil
+			ops := getDelegateOperationForSubAccount(tx, receipt, operations[1])
+			return append(operations, ops...), nil
 		}
 
 		if tx.StakingType() == stakingTypes.DirectiveUndelegate {
@@ -216,15 +218,71 @@ func getUndelegateOperationForSubAccount(
 	return undelegateion
 }
 
-func getDelegateOperationForSubAccount(
-	tx *stakingTypes.StakingTransaction, delegateOperation *types.Operation,
-) *types.Operation {
+func getDelegateOperationForSubAccount(tx *stakingTypes.StakingTransaction, receipt *hmytypes.Receipt, delegateOperation *types.Operation) (ops []*types.Operation) {
+	msg, err := stakingTypes.RLPDecodeStakeMsg(tx.Data(), stakingTypes.DirectiveDelegate)
+	if err != nil {
+		return nil
+	}
+	stkMsg, ok := msg.(*stakingTypes.Delegate)
+	if !ok {
+		return nil
+	}
+
 	amt, _ := new(big.Int).SetString(delegateOperation.Amount.Value, 10)
 	delegateAmt := new(big.Int).Sub(new(big.Int).SetUint64(0), amt)
 	validatorAddress := delegateOperation.Metadata["validatorAddress"]
-	delegation := &types.Operation{
+	idx := int64(0)
+
+	deductedAmt := stkMsg.Amount
+	logs := hmytypes.FindLogsWithTopic(receipt, staking.DelegateTopic)
+	for _, log := range logs {
+		if len(log.Data) > ethcommon.AddressLength && log.Address == stkMsg.DelegatorAddress {
+			// add undelegated transaction
+			subAccount := log.Data[:ethcommon.AddressLength]
+			address := internalCommon.BytesToAddress(subAccount)
+			b32Address, err := bech32.ConvertAndEncode(internalCommon.Bech32AddressHRP, address.Bytes())
+			if err != nil {
+				return nil
+			}
+
+			deductedAmt = new(big.Int).Sub(deductedAmt, new(big.Int).SetBytes(log.Data[ethcommon.AddressLength:]))
+			delegateAmt = stkMsg.Amount
+			idx++
+			ops = append(ops, &types.Operation{
+				OperationIdentifier: &types.OperationIdentifier{
+					Index: delegateOperation.OperationIdentifier.Index + idx,
+				},
+				RelatedOperations: []*types.OperationIdentifier{
+					{
+						Index: delegateOperation.OperationIdentifier.Index,
+					},
+				},
+				Type:   tx.StakingType().String(),
+				Status: delegateOperation.Status,
+				Account: &types.AccountIdentifier{
+					Address: delegateOperation.Account.Address,
+					SubAccount: &types.SubAccountIdentifier{
+						Address: b32Address,
+						Metadata: map[string]interface{}{
+							SubAccountMetadataKey: UnDelegation,
+						},
+					},
+					Metadata: delegateOperation.Account.Metadata,
+				},
+				Amount: &types.Amount{
+					Value:    negativeBigValue(new(big.Int).Sub(delegateAmt, deductedAmt)),
+					Currency: delegateOperation.Amount.Currency,
+					Metadata: delegateOperation.Amount.Metadata,
+				},
+				Metadata: delegateOperation.Metadata,
+			})
+		}
+	}
+
+	idx++
+	return append(ops, &types.Operation{
 		OperationIdentifier: &types.OperationIdentifier{
-			Index: delegateOperation.OperationIdentifier.Index + 1,
+			Index: delegateOperation.OperationIdentifier.Index + idx,
 		},
 		RelatedOperations: []*types.OperationIdentifier{
 			{
@@ -249,9 +307,7 @@ func getDelegateOperationForSubAccount(
 			Metadata: delegateOperation.Amount.Metadata,
 		},
 		Metadata: delegateOperation.Metadata,
-	}
-
-	return delegation
+	})
 
 }
 

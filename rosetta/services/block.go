@@ -279,7 +279,7 @@ var (
 func (s *BlockAPI) getTransactionTrace(
 	ctx context.Context, blk *hmytypes.Block, txInfo *transactionInfo,
 ) (*hmy.ExecutionResult, *types.Error) {
-	cacheKey := types.Hash(blk) + types.Hash(txInfo)
+	cacheKey := blk.Hash().String() + txInfo.tx.Hash().String()
 	if value, ok := s.txTraceCache.Get(cacheKey); ok {
 		return value.(*hmy.ExecutionResult), nil
 	}
