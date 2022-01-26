@@ -85,7 +85,8 @@ type BlsConfig struct {
 }
 
 type TxPoolConfig struct {
-	BlacklistFile string
+	BlacklistFile  string
+	RosettaFixFile string
 }
 
 type PprofConfig struct {

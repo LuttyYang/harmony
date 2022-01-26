@@ -2,7 +2,7 @@ package common
 
 import (
 	"encoding/csv"
-	"log"
+	"github.com/harmony-one/harmony/internal/utils"
 	"os"
 	"strings"
 )
@@ -13,6 +13,10 @@ func init() {
 	defaultFix = &LocalFix{
 		txForceSuccess: make(map[string]bool),
 	}
+}
+
+func InitRosettaFile(file string) {
+	defaultFix.fixFile = file
 	defaultFix.init()
 }
 
@@ -22,11 +26,12 @@ func GetDefaultFix() *LocalFix {
 
 type LocalFix struct {
 	txForceSuccess map[string]bool
+	fixFile        string
 }
 
 func (f *LocalFix) init() {
-	if _, err := os.Stat("rosetta_local_fix.csv"); !os.IsNotExist(err) {
-		fixCsv, err := os.Open("rosetta_local_fix.csv")
+	if _, err := os.Stat(f.fixFile); !os.IsNotExist(err) {
+		fixCsv, err := os.Open(f.fixFile)
 		if err != nil {
 			return
 		}
@@ -52,7 +57,7 @@ func (f *LocalFix) init() {
 			}
 		}
 
-		log.Printf("rosetta_local_fix: read %d data", count)
+		utils.Logger().Debug().Msgf("Using rosetta fix file at `%s`, read %d line", f.fixFile, count)
 	}
 }
 
