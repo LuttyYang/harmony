@@ -655,7 +655,7 @@ func setupConsensusAndNode(hc harmonyconfig.HarmonyConfig, nodeConfig *nodeconfi
 	}
 
 	// Current node.
-	chainDBFactory := &shardchain.LDBFactory{RootDir: nodeConfig.DBDir}
+	chainDBFactory := &shardchain.LDBShardFactory{RootDir: nodeConfig.DBDir}
 
 	currentNode := node.New(myHost, currentConsensus, chainDBFactory, blacklist, nodeConfig.ArchiveModes(), &hc)
 
