@@ -180,15 +180,10 @@ func (l *LeveldbShard) Stat(property string) (string, error) {
 // A nil start is treated as a key before all keys in the data store; a nil limit
 // is treated as a key after all keys in the data store. If both is nil then it
 // will compact entire data store.
-func (l *LeveldbShard) Compact(start []byte, limit []byte) error {
-	for _, db := range l.dbs {
-		err := db.CompactRange(util.Range{Start: start, Limit: limit})
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+func (l *LeveldbShard) Compact(start []byte, limit []byte) (err error) {
+	return parallelRunAndReturnErr(int(l.dbCount), func(i int) error {
+		return l.dbs[i].CompactRange(util.Range{Start: start, Limit: limit})
+	})
 }
 
 // Close all the DB

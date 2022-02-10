@@ -68,15 +68,10 @@ func (l *LeveldbShardBatch) ValueSize() int {
 }
 
 // Write flushes any accumulated data to disk.
-func (l *LeveldbShardBatch) Write() error {
-	for i, batch := range l.batches {
-		err := l.shard.dbs[i].Write(batch, nil)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+func (l *LeveldbShardBatch) Write() (err error) {
+	return parallelRunAndReturnErr(int(l.batchesCount), func(i int) error {
+		return l.shard.dbs[i].Write(l.batches[i], nil)
+	})
 }
 
 // Reset resets the batch for reuse.
