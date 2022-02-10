@@ -29,7 +29,9 @@ func NewLeveldbShard(savePath string, diskCount int, diskShards int) (shard *Lev
 	defer func() {
 		if err != nil {
 			for _, db := range shard.dbs {
-				_ = db.Close()
+				if db != nil {
+					_ = db.Close()
+				}
 			}
 
 			shard = nil
