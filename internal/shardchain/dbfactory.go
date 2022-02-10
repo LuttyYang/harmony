@@ -3,7 +3,6 @@ package shardchain
 import (
 	"fmt"
 	"github.com/harmony-one/harmony/internal/shardchain/leveldb_shard"
-	"github.com/harmony-one/harmony/internal/shardchain/local_cache"
 	"path"
 	"path/filepath"
 
@@ -51,5 +50,6 @@ func (f *LDBShardFactory) NewChainDB(shardID uint32) (ethdb.Database, error) {
 		return nil, err
 	}
 
-	return rawdb.NewDatabase(local_cache.NewLocalCacheDatabase(shard)), nil
+	//local_cache.NewLocalCacheDatabase(shard)
+	return rawdb.NewDatabase(shard), nil
 }
