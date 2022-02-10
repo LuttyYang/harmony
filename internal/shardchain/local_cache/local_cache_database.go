@@ -5,7 +5,6 @@ import (
 	"github.com/allegro/bigcache"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"log"
-	"sync"
 	"time"
 )
 
@@ -22,11 +21,10 @@ func (c *cacheWrapper) Delete(key []byte) error {
 }
 
 type LocalCacheDatabase struct {
-	lock sync.RWMutex
+	ethdb.KeyValueStore
 
 	enableReadCache bool
 
-	remoteDB  ethdb.KeyValueStore
 	deleteMap map[string]bool
 	readCache *cacheWrapper
 }
@@ -38,11 +36,11 @@ func NewLocalCacheDatabase(remoteDB ethdb.KeyValueStore) *LocalCacheDatabase {
 	cache, _ := bigcache.NewBigCache(config)
 
 	db := &LocalCacheDatabase{
-		enableReadCache: true,
+		KeyValueStore: remoteDB,
 
-		remoteDB:  remoteDB,
-		deleteMap: make(map[string]bool),
-		readCache: &cacheWrapper{cache},
+		enableReadCache: true,
+		deleteMap:       make(map[string]bool),
+		readCache:       &cacheWrapper{cache},
 	}
 
 	go func() {
@@ -55,10 +53,7 @@ func NewLocalCacheDatabase(remoteDB ethdb.KeyValueStore) *LocalCacheDatabase {
 }
 
 func (c *LocalCacheDatabase) Has(key []byte) (bool, error) {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-
-	return c.remoteDB.Has(key)
+	return c.KeyValueStore.Has(key)
 }
 
 func (c *LocalCacheDatabase) Get(key []byte) (ret []byte, err error) {
@@ -78,7 +73,7 @@ func (c *LocalCacheDatabase) Get(key []byte) (ret []byte, err error) {
 		}
 	}
 
-	return c.remoteDB.Get(key)
+	return c.KeyValueStore.Get(key)
 }
 
 func (c *LocalCacheDatabase) Put(key []byte, value []byte) error {
@@ -86,7 +81,7 @@ func (c *LocalCacheDatabase) Put(key []byte, value []byte) error {
 		_ = c.readCache.Put(key, value)
 	}
 
-	return c.remoteDB.Put(key, value)
+	return c.KeyValueStore.Put(key, value)
 }
 
 func (c *LocalCacheDatabase) Delete(key []byte) error {
@@ -94,33 +89,23 @@ func (c *LocalCacheDatabase) Delete(key []byte) error {
 		_ = c.readCache.Delete(key)
 	}
 
-	return c.remoteDB.Delete(key)
+	return c.KeyValueStore.Delete(key)
 }
 
 func (c *LocalCacheDatabase) NewBatch() ethdb.Batch {
-	return c.remoteDB.NewBatch()
+	return newLocalCacheBatch(c)
 }
 
-func (c *LocalCacheDatabase) NewIterator() ethdb.Iterator {
-	return c.remoteDB.NewIterator()
-}
+func (c *LocalCacheDatabase) batchWrite(b *LocalCacheBatch) error {
+	if c.enableReadCache {
+		_ = b.Replay(c.readCache)
+	}
 
-func (c *LocalCacheDatabase) NewIteratorWithStart(start []byte) ethdb.Iterator {
-	return c.remoteDB.NewIteratorWithStart(start)
-}
+	batch := c.KeyValueStore.NewBatch()
+	err := b.Replay(batch)
+	if err != nil {
+		return err
+	}
 
-func (c *LocalCacheDatabase) NewIteratorWithPrefix(prefix []byte) ethdb.Iterator {
-	return c.remoteDB.NewIteratorWithPrefix(prefix)
-}
-
-func (c *LocalCacheDatabase) Stat(property string) (string, error) {
-	return c.remoteDB.Stat(property)
-}
-
-func (c *LocalCacheDatabase) Compact(start []byte, limit []byte) error {
-	return c.remoteDB.Compact(start, limit)
-}
-
-func (c *LocalCacheDatabase) Close() error {
-	return c.remoteDB.Close()
+	return batch.Write()
 }
