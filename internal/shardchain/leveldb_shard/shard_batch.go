@@ -27,7 +27,7 @@ func NewLeveldbShardBatch(shard *LeveldbShard) *LeveldbShardBatch {
 	}
 
 	for i := uint32(0); i < shard.dbCount; i++ {
-		shardBatch.batches = append(shardBatch.batches, batchesPool.Get().(*leveldb.Batch))
+		shardBatch.batches[i] = batchesPool.Get().(*leveldb.Batch)
 	}
 
 	runtime.SetFinalizer(shardBatch, func(o *LeveldbShardBatch) {
