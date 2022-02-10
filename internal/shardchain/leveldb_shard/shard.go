@@ -1,6 +1,8 @@
 package leveldb_shard
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -19,9 +21,11 @@ type LeveldbShard struct {
 	dbCount uint32
 }
 
+var shardIdxKey = []byte("__DB_SHARED_INDEX__")
+
 func NewLeveldbShard(savePath string, diskCount int, diskShards int) (shard *LeveldbShard, err error) {
 	shard = &LeveldbShard{
-		dbs:     make([]*leveldb.DB, 0, diskCount*diskShards),
+		dbs:     make([]*leveldb.DB, diskCount*diskShards),
 		dbCount: uint32(diskCount * diskShards),
 	}
 
@@ -48,22 +52,40 @@ func NewLeveldbShard(savePath string, diskCount int, diskShards int) (shard *Lev
 
 	// async open
 	wg := sync.WaitGroup{}
-	lock := sync.Mutex{}
 	for i := 0; i < diskCount; i++ {
 		for j := 0; j < diskShards; j++ {
 			shardPath := filepath.Join(savePath, fmt.Sprintf("disk%02d", i), fmt.Sprintf("block%02d", j))
+			dbIndex := i*diskShards + j
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
 
-				file, openErr := leveldb.OpenFile(shardPath, levelDBOptions)
+				ldb, openErr := leveldb.OpenFile(shardPath, levelDBOptions)
 				if openErr != nil {
 					err = openErr
+					return
 				}
 
-				lock.Lock()
-				defer lock.Unlock()
-				shard.dbs = append(shard.dbs, file)
+				indexByte := make([]byte, 8)
+				binary.BigEndian.PutUint64(indexByte, uint64(dbIndex))
+				inDBIndex, getErr := ldb.Get(shardIdxKey, nil)
+				if getErr != nil {
+					if getErr == leveldb.ErrNotFound {
+						putErr := ldb.Put(shardIdxKey, indexByte, nil)
+						if putErr != nil {
+							err = putErr
+							return
+						}
+					} else {
+						err = getErr
+						return
+					}
+				} else if bytes.Compare(indexByte, inDBIndex) != 0 {
+					err = fmt.Errorf("db shard index error, need %v, got %v", indexByte, inDBIndex)
+					return
+				}
+
+				shard.dbs[dbIndex] = ldb
 			}()
 		}
 	}
