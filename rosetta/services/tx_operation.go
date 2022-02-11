@@ -461,7 +461,16 @@ var (
 		vm.CREATE:       struct{}{},
 		vm.CREATE2:      struct{}{},
 	}
+
+	internalNativeTransferEvmOpsArr []string
 )
+
+func init() {
+	internalNativeTransferEvmOpsArr = make([]string, 0, len(internalNativeTransferEvmOps))
+	for k, _ := range internalNativeTransferEvmOps {
+		internalNativeTransferEvmOpsArr = append(internalNativeTransferEvmOpsArr, k)
+	}
+}
 
 // getContractInternalTransferNativeOperations extracts & formats the native operations for a contract's internal
 // native token transfers (i.e: the sender of a transaction is the contract).
