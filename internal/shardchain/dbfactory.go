@@ -40,13 +40,15 @@ func (f *MemDBFactory) NewChainDB(shardID uint32) (ethdb.Database, error) {
 
 // LDBShardFactory is a merged Multi-LDB-backed blockchain database factory.
 type LDBShardFactory struct {
-	RootDir string // directory in which to put shard databases in.
+	RootDir    string // directory in which to put shard databases in.
+	DiskCount  int
+	ShardCount int
 }
 
 // NewChainDB returns a new memDB for the blockchain for given shard.
 func (f *LDBShardFactory) NewChainDB(shardID uint32) (ethdb.Database, error) {
 	dir := filepath.Join(f.RootDir, fmt.Sprintf("harmony_sharddb_%d", shardID))
-	shard, err := leveldb_shard.NewLeveldbShard(dir, 8, 4)
+	shard, err := leveldb_shard.NewLeveldbShard(dir, f.DiskCount, f.ShardCount)
 	if err != nil {
 		return nil, err
 	}
