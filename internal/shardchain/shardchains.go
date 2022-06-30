@@ -124,7 +124,7 @@ func (sc *CollectionImpl) ShardChain(shardID uint32) (core.BlockChain, error) {
 	db = nil // don't close
 	sc.pool[shardID] = bc
 
-	if sc.harmonyconfig.General.RunElasticMode {
+	if sc.harmonyconfig != nil && sc.harmonyconfig.General.RunElasticMode {
 		// init the tikv mode
 		bc.InitTiKV(sc.harmonyconfig.TiKV)
 	}
@@ -133,7 +133,7 @@ func (sc *CollectionImpl) ShardChain(shardID uint32) (core.BlockChain, error) {
 }
 
 func initStateCache(db ethdb.Database, sc *CollectionImpl, shardID uint32) (state.Database, error) {
-	if sc.harmonyconfig.General.RunElasticMode {
+	if sc.harmonyconfig != nil && sc.harmonyconfig.General.RunElasticMode {
 		// used for tikv mode, init state db using tikv storage
 		stateDB, err := tikv_manage.GetDefaultTiKVFactory().NewStateDB(shardID)
 		if err != nil {
